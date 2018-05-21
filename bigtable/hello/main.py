@@ -13,16 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-from google.cloud.bigtable.column_family import GarbageCollectionRule,\
-    MaxVersionsGCRule
-from google.cloud.bigtable.row_filters import RowFilter, ConditionalRowFilter,\
-    RowSampleFilter, ColumnRangeFilter, SinkFilter, RowKeyRegexFilter,\
-    TimestampRange, ApplyLabelFilter, ColumnQualifierRegexFilter,\
-    CellsRowLimitFilter, CellsColumnLimitFilter, _BoolFilter, ValueRangeFilter
-from datetime import datetime, timezone
-import pytz
-import re
+
 """Demonstrates how to connect to Cloud Bigtable and run some basic operations.
 
 Prerequisites:
@@ -51,7 +42,7 @@ def main(project_id, instance_id, table_id):
     table = instance.table(table_id)
     table.create()
     column_family_id = 'cf1'
-    cf1 = table.column_family(column_family_id, MaxVersionsGCRule(max_num_versions=1))
+    cf1 = table.column_family(column_family_id)
     cf1.create()
     # [END creating_a_table]
 
@@ -63,8 +54,6 @@ def main(project_id, instance_id, table_id):
         'Hello Cloud Bigtable!',
         'Hello Python!',
     ]
-
-    local_timezone = datetime.now(timezone.utc).astimezone().tzinfo
 
     for i, value in enumerate(greetings):
         # Note: This example uses sequential numeric IDs for simplicity,
@@ -82,39 +71,29 @@ def main(project_id, instance_id, table_id):
         row.set_cell(
             column_family_id,
             column_id,
-            value.encode('utf-8'), timestamp=datetime.now(tz=pytz.timezone('UTC')))
+            value.encode('utf-8'))
         row.commit()
     # [END writing_rows]
 
-    # [START scanning_all_rows]
+    # [START getting_a_row]
     print('Getting a single greeting by row key.')
-    rows = table.yield_rows()
-    for row in rows:
-        cell = row.cells[column_family_id][column_id][0]
-        value = cell.value.decode('utf-8')
-        print('\t{}: {}'.format(row.row_key, value))
-        print('\t{}: {}'.format("Timestamp", cell.timestamp))
-    # [END scanning_all_rows]
-    
-    # [START scanning rows with limit number of rows]
-    print('Scanning for all greetings:')    
-    partial_rows = table.yield_rows(limit=1)
-    for row in partial_rows:
-        cell = row.cells[column_family_id][column_id][0]
-        value = cell.value.decode('utf-8')
-        print('\t{}: {}'.format(row.row_key, value))
-    # [END scanning rows with limit number of rows]
+    key = 'greeting0'
+    row = table.read_row(key.encode('utf-8'))
+    value = row.cells[column_family_id][column_id][0].value
+    print('\t{}: {}'.format(key, value.decode('utf-8')))
+    # [END getting_a_row]
 
-    # [START scanning rows with filter]
+    # [START scanning_all_rows]
     print('Scanning for all greetings:')
-    rows = table.yield_rows(filter_=CellsRowLimitFilter(1))
-    
-    for row in rows:
+    partial_rows = table.read_rows()
+    partial_rows.consume_all()
+
+    for row_key, row in partial_rows.rows.items():
+        key = row_key.decode('utf-8')
         cell = row.cells[column_family_id][column_id][0]
         value = cell.value.decode('utf-8')
-        print('\t{}: {}'.format(row.row_key, value))
-    # [END scanning rows with filter]
-
+        print('\t{}: {}'.format(key, value))
+    # [END scanning_all_rows]
 
     # [START deleting_a_table]
     print('Deleting the {} table.'.format(table_id))
@@ -123,14 +102,6 @@ def main(project_id, instance_id, table_id):
 
 
 if __name__ == '__main__':
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="E://workspace//qlogic//qlogic-test//QLogic-Test-Project.json"
-    project_id = 'grass-clump-479'
-    instance_id = 'mahesh-python'
-    table = 'Hello-Bigtable'
-    main(project_id, instance_id, table)
-
-
-if __name__ == '__main1__':
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
